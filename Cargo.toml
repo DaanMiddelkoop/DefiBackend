@@ -1,0 +1,27 @@
+[package]
+name = "defi-backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures = "0.3.31"
+rustls = { version = "0.23.28", features = ["ring","logging","tls12"], default-features = false }
+tokio = { version = "1.46.1", features = ["full"] }
+tokio-tungstenite = "0.27.0"
+
+serde = { version = "*", features = ["derive"] }
+serde_json = { version = "*", features = ["raw_value"] }
+
+alloy = { version = "1.0.1", features = ["full"] }
+alloy-sol-types = "*"
+
+clap = { version = "*", features = ["derive", "env"]}
+reth = { git = "https://github.com/paradigmxyz/reth.git" } # Reth
+reth-exex = { git = "https://github.com/paradigmxyz/reth.git" } # Execution Extensions
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-evm = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-execution-types = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-tracing = { git = "https://github.com/paradigmxyz/reth.git" } # Logging
+eyre = "0.6" # Easy error handling
