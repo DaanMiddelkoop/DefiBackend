@@ -1,0 +1,23 @@
+[package]
+name = "providers-reth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+providers.workspace = true
+api.workspace = true
+futures.workspace = true
+alloy.workspace = true
+tokio.workspace = true
+revm.workspace = true
+
+clap = { version = "*", features = ["derive", "env"]}
+reth = { git = "https://github.com/paradigmxyz/reth.git" } # Reth
+reth-exex = { git = "https://github.com/paradigmxyz/reth.git" } # Execution Extensions
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-evm = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-execution-types = { git = "https://github.com/paradigmxyz/reth.git" } # Ethereum Node implementation
+reth-tracing = { git = "https://github.com/paradigmxyz/reth.git" } # Logging
+eyre = "0.6" # Easy error handling

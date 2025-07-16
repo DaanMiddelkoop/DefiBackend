@@ -1,0 +1,10 @@
+[package]
+name = "providers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+op-revm.workspace = true
+revm.workspace = true
+alloy.workspace = true
+alloy-sol-types.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "providers-geth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+providers.workspace = true
+
+futures.workspace = true
+base.workspace = true
+
+alloy.workspace = true
+alloy-sol-types.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+revm.workspace = true

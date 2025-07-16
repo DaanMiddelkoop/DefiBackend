@@ -5,11 +5,11 @@ use std::{
 };
 
 use alloy::primitives::{B256, U64};
+use base::connection::{Connection, Message};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
-use tokio_tungstenite::tungstenite::Message;
 
-use crate::{backend::geth::GethError, connection::Connection};
+use crate::GethError;
 
 type Result<T> = std::result::Result<T, GethError>;
 

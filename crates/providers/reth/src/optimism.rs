@@ -7,28 +7,27 @@ use std::{
 
 use alloy::{
     eips::BlockNumberOrTag,
-    primitives::{Address, B256, U256},
+    primitives::{Address, B256, StorageValue, U256},
 };
 use clap::Parser;
-use futures::{FutureExt, TryStreamExt, select};
+use futures::{FutureExt, SinkExt, StreamExt, TryStreamExt, select};
+use providers::{State, StateProvider};
 use reth::{
     api::{FullNodeComponents, NodeTypes},
     providers::StateProviderFactory,
-    revm::{
-        Database, DatabaseRef,
-        db::{CacheDB, DBErrorMarker},
-        primitives::{StorageKey, StorageValue},
-        state::{AccountInfo, Bytecode},
-    },
+    revm::primitives::StorageKey,
 };
 use reth_execution_types::Chain;
 use reth_exex::{ExExContext, ExExNotification};
 use reth_optimism_cli::{Cli, chainspec::OpChainSpecParser};
 use reth_optimism_node::{OpNode, args::RollupArgs};
 use reth_tracing::tracing::info;
-use tokio::sync::mpsc::{Receiver, Sender};
-
-use crate::api::state::{State, StateProvider};
+use revm::{
+    Database, DatabaseRef,
+    context::DBErrorMarker,
+    database::CacheDB,
+    state::{AccountInfo, Bytecode},
+};
 
 pub struct OptimismState {
     database: CacheDB<OptimismFetcher>,
@@ -37,6 +36,10 @@ pub struct OptimismState {
 impl State for OptimismState {
     fn database(&mut self) -> &mut impl Database {
         &mut self.database
+    }
+
+    fn current_block(&self) -> u64 {
+        self.database.db.block
     }
 }
 
@@ -94,6 +97,7 @@ impl DatabaseRef for OptimismFetcher {
     #[doc = " Gets basic account information."]
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         if let OptimismCallResponse::Basic(account) = self.call(OptimismCallType::Basic(address))? {
+            println!("Fetched account {address:?}");
             Ok(account)
         } else {
             Err(FetcherError("Failed to fetch basic account information".to_string()))
@@ -108,6 +112,7 @@ impl DatabaseRef for OptimismFetcher {
     #[doc = " Gets storage value of address at index."]
     fn storage_ref(&self, address: Address, index: StorageKey) -> Result<StorageValue, Self::Error> {
         if let OptimismCallResponse::Storage(value) = self.call(OptimismCallType::Storage(address, index))? {
+            println!("Fetched storage value for {address} at {index:x}: {value:x}");
             Ok(value)
         } else {
             Err(FetcherError("Failed to fetch storage value".to_string()))
@@ -133,7 +138,7 @@ impl OptimismReplier {
 
 pub struct OptimismStateProvider {
     state: OptimismState,
-    state_updates: Receiver<StateDiff>,
+    state_updates: futures::channel::mpsc::Receiver<StateDiff>,
 }
 
 impl StateProvider for OptimismStateProvider {
@@ -142,7 +147,8 @@ impl StateProvider for OptimismStateProvider {
     }
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Vec<Address>> {
-        let update = ready!(self.state_updates.poll_recv(cx)).unwrap();
+        println!("Polling for state updates...");
+        let update = ready!(self.state_updates.poll_next_unpin(cx)).unwrap();
 
         assert!(update.start_block == self.state.database.db.block);
 
@@ -162,7 +168,7 @@ impl StateProvider for OptimismStateProvider {
 #[allow(unused)]
 impl OptimismStateProvider {
     pub async fn start() -> Self {
-        let (state_updates_tx, mut state_updates_rx) = tokio::sync::mpsc::channel(16);
+        let (state_updates_tx, mut state_updates_rx) = futures::channel::mpsc::channel(16);
         let (call_tx, call_rx) = tokio::sync::mpsc::channel(16);
         let communicator = Communicator {
             state_updates: state_updates_tx,
@@ -172,7 +178,8 @@ impl OptimismStateProvider {
         start_reth(communicator);
 
         // Wait for first state update
-        let update = state_updates_rx.recv().await.expect("Failed to receive initial state update");
+        let update = state_updates_rx.next().await.expect("Failed to receive initial state update");
+        println!("Received initial update from {} to {}", update.start_block, update.end_block);
 
         Self {
             state: OptimismState {
@@ -193,27 +200,46 @@ struct StateDiff {
 }
 
 struct Communicator {
-    state_updates: Sender<StateDiff>,
+    state_updates: futures::channel::mpsc::Sender<StateDiff>,
     replier: OptimismReplier,
 }
 
 fn start_reth(communicator: Communicator) {
-    if let Err(err) = Cli::<OpChainSpecParser, RollupArgs>::parse().run(async move |builder, rollup_args| {
-        info!(target: "reth::cli", "Launching node");
-        let handle = builder
-            .node(OpNode::new(rollup_args))
-            .install_exex("MEVM", async move |ctx| Ok(run_statediff(ctx, communicator)))
-            .launch_with_debug_capabilities()
-            .await?;
-        handle.node_exit_future.await
-    }) {
-        eprintln!("Error: {err:?}");
-        std::process::exit(1);
-    }
+    std::thread::spawn(move || {
+        let args = std::fs::read_to_string("test_args.sh").unwrap();
+        println!("Args: {:?}", args.split_whitespace().collect::<Vec<_>>());
+
+        if let Err(err) = Cli::<OpChainSpecParser, RollupArgs>::parse_from(args.split_whitespace()).run(async move |builder, rollup_args| {
+            info!(target: "reth::cli", "Launching node");
+            let handle = builder
+                .node(OpNode::new(rollup_args))
+                .install_exex("DefiBackend", async move |ctx| Ok(run_statediff(ctx, communicator)))
+                .launch_with_debug_capabilities()
+                .await?;
+            handle.node_exit_future.await
+        }) {
+            eprintln!("Error: {err:?}");
+            std::process::exit(1);
+        }
+    });
 }
 
 async fn run_statediff<Node: FullNodeComponents>(mut ctx: ExExContext<Node>, mut communicator: Communicator) -> eyre::Result<()> {
     let mut addresses = HashSet::new();
+
+    let current_block = ctx.head.number;
+    let state_diff = StateDiff {
+        start_block: current_block,
+        end_block: current_block,
+        diffs: Vec::new(),
+    };
+
+    communicator
+        .state_updates
+        .send(state_diff)
+        .await
+        .expect("Failed to send initial state diff");
+
     loop {
         select! {
             notification = ctx.notifications.try_next().fuse() => {
@@ -224,6 +250,7 @@ async fn run_statediff<Node: FullNodeComponents>(mut ctx: ExExContext<Node>, mut
 
                 match &notification {
                     ExExNotification::ChainCommitted { new } => {
+                        info!(target: "reth::exex", "Chain committed new block {:?}", new.range());
                         let state_diff = get_state_diff::<Node::Types>(new);
                         communicator.state_updates.send(state_diff).await.expect("Failed to send state diff");
                     }
@@ -234,7 +261,6 @@ async fn run_statediff<Node: FullNodeComponents>(mut ctx: ExExContext<Node>, mut
                         info!(target: "reth::exex", "Chain reorganized from block {:?} to {:?}", old.range(), new.range());
                     }
                 }
-                todo!("Generate state diff from notifications");
             }
             call = poll_fn(|cx| communicator.replier.poll(cx)).fuse() => {
                 handle_call(&mut ctx, &mut addresses, call).await;
@@ -307,4 +333,21 @@ async fn handle_call<Node: FullNodeComponents>(ctx: &mut ExExContext<Node>, inte
             call.response.send(result).unwrap();
         }
     };
+}
+
+#[cfg(test)]
+mod test {
+    use futures::future::poll_fn;
+
+    use providers::{State, StateProvider};
+
+    #[tokio::test]
+    async fn test_optimism_state_provider() {
+        let mut provider = super::OptimismStateProvider::start().await;
+        loop {
+            poll_fn(|cx| provider.poll(cx)).await;
+            let state = provider.state();
+            println!("Current block: {}", state.current_block());
+        }
+    }
 }

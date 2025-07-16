@@ -1,0 +1,11 @@
+[package]
+name = "defi-backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+providers.workspace = true
+providers-reth.workspace = true
+providers-geth.workspace = true
+
+api.workspace = true

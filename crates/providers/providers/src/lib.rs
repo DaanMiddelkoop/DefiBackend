@@ -1,19 +1,20 @@
 use std::task::{Context, Poll};
 
-use alloy::primitives::{Address, TxKind, U256};
+use alloy::{
+    hex,
+    primitives::{Address, TxKind, U256},
+};
 use alloy_sol_types::{SolCall, SolType};
-use reth::revm::{
+use op_revm::{DefaultOp, OpBuilder};
+use revm::{
     Database, ExecuteEvm,
     context::result::{ExecutionResult, Output},
-};
-use reth_evm::{
-    op_revm::{DefaultOp, OpBuilder},
-    revm,
 };
 
 pub trait State {
     fn database(&mut self) -> &mut impl Database;
-    fn call<C: SolCall>(
+    fn current_block(&self) -> u64;
+    async fn call<C: SolCall>(
         &mut self,
         from: Address,
         to: Address,
@@ -24,12 +25,10 @@ pub trait State {
         let mut evm = revm::Context::op().with_db(database).build_op().0;
 
         let abi_encoded = C::new(calldata).abi_encode();
+        println!("Encoded calldata: {}", hex::encode(&abi_encoded));
 
         evm.modify_cfg(|x| {
             x.disable_nonce_check = true;
-            x.disable_base_fee = true;
-            x.disable_block_gas_limit = true;
-            x.disable_eip3607 = true;
         });
 
         evm.modify_tx(|x| {

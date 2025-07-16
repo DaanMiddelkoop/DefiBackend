@@ -1,14 +1,16 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use alloy::{
     eips::BlockNumberOrTag,
+    hex,
     primitives::{Address, B256, U64, U256},
 };
+use base::connection::{Connection, Message};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
-use tokio_tungstenite::tungstenite::Message;
-
-use crate::connection::Connection;
 
 use super::GethError;
 
@@ -79,6 +81,21 @@ impl GethClient {
         }
 
         Ok(storage)
+    }
+
+    pub async fn eth_call(&mut self, block: BlockNumberOrTag, from: Address, to: Address, value: U256, data: &[u8]) -> Result<Vec<u8>, GethError> {
+        let params = json!([{
+            "from": from,
+            "to": to,
+            "value": value,
+            "data": hex::encode_prefixed(data)
+        }, block]);
+
+        println!("params: {params}");
+
+        let response = self.request::<String>("eth_call", params).await?;
+        println!("Response: {response}");
+        hex::decode(response).map_err(|err| GethError::DeserializeError(format!("Failed to decode response: {err}")))
     }
 }
 
