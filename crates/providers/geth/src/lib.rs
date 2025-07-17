@@ -1,7 +1,10 @@
-use std::{fmt::Display, task::ready};
+use std::{
+    fmt::Display,
+    task::{Poll, ready},
+};
 
 use providers::{State, StateProvider};
-use revm::{Database, context::DBErrorMarker, database::InMemoryDB};
+use revm::{Database, context::DBErrorMarker, database::InMemoryDB, primitives::Address};
 
 use crate::{
     client::GethClient,
@@ -29,6 +32,7 @@ impl std::error::Error for GethError {}
 impl DBErrorMarker for GethError {}
 
 pub struct GethProvider {
+    chain_id: u16,
     subscription: Subscription<NewHeads>,
     state: GethState,
 }
@@ -38,6 +42,7 @@ impl GethProvider {
         let rt = tokio::runtime::Handle::current();
         let mut client = GethClient::connect(&url, std::time::Duration::from_secs(1)).await.unwrap();
         let current_block = client.block_number().await.unwrap_or(0);
+        let chain_id = client.chain_id().await.unwrap();
 
         let subscription = new_heads(&url).await.unwrap();
 
@@ -48,23 +53,34 @@ impl GethProvider {
             rt,
         };
 
-        GethProvider { state, subscription }
+        GethProvider {
+            chain_id,
+            state,
+            subscription,
+        }
     }
 }
 
 impl StateProvider for GethProvider {
-    fn poll(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Vec<alloy::primitives::Address>> {
+    fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Vec<Address>> {
+        while self.state.client.poll(cx).is_ready() {}
+
         let result = ready!(self.subscription.next(cx));
         match result {
             Ok(new_heads) => {
                 self.state.current_block = u64::try_from(new_heads.number).unwrap();
-                todo!("Generate update list from newHeads");
+                // println!("Not implemented! Generate update list from newHeads");
+                Poll::Ready(vec![])
             }
             Err(err) => {
                 eprintln!("Error while polling subscription: {err}");
                 std::task::Poll::Ready(vec![])
             }
         }
+    }
+
+    fn chain_id(&self) -> u16 {
+        self.chain_id
     }
 
     fn state(&mut self) -> &mut impl State {

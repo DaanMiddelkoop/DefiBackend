@@ -1,12 +1,13 @@
 use std::{
     collections::BTreeMap,
-    time::{Duration, Instant},
+    task::{Poll, ready},
+    time::Duration,
 };
 
 use alloy::{
     eips::BlockNumberOrTag,
     hex,
-    primitives::{Address, B256, U64, U256},
+    primitives::{Address, B256, U16, U64, U256},
 };
 use base::connection::{Connection, Message};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -26,14 +27,23 @@ struct Response<T> {
 
 #[derive(Deserialize)]
 pub struct KeyValue {
-    key: Option<B256>,
-    value: U256,
+    pub key: Option<B256>,
+    pub value: U256,
 }
 
 impl GethClient {
     pub async fn connect(url: &str, timeout: Duration) -> Result<Self, GethError> {
         let connection = Connection::new(url, timeout).await.map_err(GethError::ConnectionError)?;
         Ok(Self { connection })
+    }
+
+    pub fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<()> {
+        let _ = ready!(self.connection.poll(cx));
+        Poll::Ready(())
+    }
+
+    pub async fn chain_id(&mut self) -> Result<u16, GethError> {
+        self.request::<U16>("eth_chainId", &[] as &[u8]).await.map(|x| u16::try_from(x).unwrap())
     }
 
     pub async fn request<T: DeserializeOwned>(&mut self, method: &str, params: impl Serialize) -> Result<T, GethError> {
@@ -66,7 +76,7 @@ impl GethClient {
         #[derive(Deserialize)]
         pub struct StorageRangeResponse {
             storage: BTreeMap<B256, KeyValue>,
-            nextKey: Option<B256>,
+            next_key: Option<B256>,
         }
 
         let mut storage = BTreeMap::<B256, KeyValue>::new();
@@ -76,7 +86,7 @@ impl GethClient {
             let values = self
                 .request::<StorageRangeResponse>("debug_storageRangeAt", json!([block, 0, address, key, 10000]))
                 .await?;
-            next_key = values.nextKey;
+            next_key = values.next_key;
             storage.extend(values.storage);
         }
 
@@ -91,10 +101,7 @@ impl GethClient {
             "data": hex::encode_prefixed(data)
         }, block]);
 
-        println!("params: {params}");
-
         let response = self.request::<String>("eth_call", params).await?;
-        println!("Response: {response}");
         hex::decode(response).map_err(|err| GethError::DeserializeError(format!("Failed to decode response: {err}")))
     }
 }

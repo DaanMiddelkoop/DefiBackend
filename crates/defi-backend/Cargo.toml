@@ -9,3 +9,6 @@ providers-reth.workspace = true
 providers-geth.workspace = true
 
 api.workspace = true
+
+alloy.workspace = true
+alloy-sol-types.workspace = true

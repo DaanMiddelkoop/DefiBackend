@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/providers/reth", "crates/api", "crates/providers/providers", "crates/providers/geth", "crates/base", "crates/defi-backend"]
-
+default-members = ["crates/defi-backend"]
 
 [workspace.dependencies]
 base = { path = "crates/base" }

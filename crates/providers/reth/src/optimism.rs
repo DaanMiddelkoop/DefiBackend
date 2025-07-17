@@ -137,11 +137,16 @@ impl OptimismReplier {
 }
 
 pub struct OptimismStateProvider {
+    chain_id: u16,
     state: OptimismState,
     state_updates: futures::channel::mpsc::Receiver<StateDiff>,
 }
 
 impl StateProvider for OptimismStateProvider {
+    fn chain_id(&self) -> u16 {
+        self.chain_id
+    }
+
     fn state(&mut self) -> &mut impl State {
         &mut self.state
     }
@@ -182,6 +187,7 @@ impl OptimismStateProvider {
         println!("Received initial update from {} to {}", update.start_block, update.end_block);
 
         Self {
+            chain_id: todo!("Fetch chain ID from reth"),
             state: OptimismState {
                 database: CacheDB::new(OptimismFetcher {
                     block: update.end_block,

@@ -4,9 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+providers.workspace = true
+
 futures.workspace = true
 rustls.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+alloy.workspace = true
+alloy-sol-types.workspace = true
+surf = "2.3.2"
+rand = "0.9.1"
+base64 = "0.22.1"
